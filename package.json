@@ -32,5 +32,9 @@
     "serve-favicon": "*",
     "underscore": "*",
     "uuid": "^8.3.2"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.4",
+    "@types/node": "^20.11.17"
   }
 }

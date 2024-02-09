@@ -2,7 +2,7 @@ import express from 'express';
 import http from 'http';
 import amqp from 'amqplib';
 import bodyParser from 'body-parser';
-process.env.APIGATEWAYPORT;
+const rabbitMQUrl = process.env.RABBITMQ_URL;
 
 
 const app = express();
@@ -10,16 +10,14 @@ const expressServer = http.createServer(app);
 
 app.use(bodyParser.json());
 
-// Maak een RabbitMQ-verbinding
-const rabbitMQUrl = 'amqp://localhost'; // Pas aan indien nodig
 const startedContests = new Map();
 let rabbitMQChannel = null;
 const exchange = 'contestQueue';
-const keys = ['contest.end', 'contest.registration', 'contest.scores.individual', 'contest.scores.all'];
+const keys = ['contest.start'];
 
 
 
-await amqp.connect('amqp://localhost', function(error0, connection) {
+await amqp.connect(rabbitMQUrl, function(error0, connection) {
     if (error0) {
         throw error0;
     }
