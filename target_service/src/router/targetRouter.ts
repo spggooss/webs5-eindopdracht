@@ -1,12 +1,8 @@
-// @ts-ignore
 import express from 'express';
 import * as dotenv from 'dotenv';
 import Target from "../models/Target";
-import {CreateUserValidator} from "../validators/CreateUserValidator";
-// @ts-ignore
-import jwt from "jsonwebtoken";
 import amqp, {AmqpConnectionManager, ChannelWrapper} from "amqp-connection-manager";
-import {ConfirmChannel} from "amqplib";
+import vision from '@google-cloud/vision';
 
 const router = express.Router();
 
@@ -61,41 +57,48 @@ async function connectQueue() {
     }
 }
 
-interface User {
-    email: string,
-    password: string,
+connectQueue().then(r => console.log('connected to queue')).catch(e => console.log(e));
+
+
+interface Target {
+    userId: string,
+    image: string,
+    location: string,
+    date: Date,
+    labels: string[]
 }
 
-connectQueue().then(r => console.log('connected to queue')).catch(e => console.log(e));
-//De gebruiker ontvangt hier een register json object omdat de user nog niet bekend is
-//in het systeem
-router.get('/register', (req, res) => {
-    res.json({
-        email: "geef hier uw email adres",
-        password: "voer hier uw wachtwoord in",
-    })
-})
-
-//gebruiker wordt geregistreerd en ontvangt een JWT
-interface Target {
+interface TargetData {
     userId: string,
     image: string,
     location: string,
     date: Date
 }
 
-//Daarmee is de gebruiker automatisch ingelogd
+
 router.post('/target', async (req, res) => {
     const targetData = req.body;
 
     if (!targetData.userId || !targetData.image || !targetData.location || !targetData.date) {
         return res.status(400).json({error: 'Fill required fields'});
     }
+
+    const client = new vision.ImageAnnotatorClient();
+
+    const [result] = await client.labelDetection(targetData.image);
+    const labels = result.labelAnnotations;
+    let labelValues: string[] = [];
+    if (labels !== undefined  && labels !== null) {
+        labelValues = labels.map((label) => label.description ?? '');
+    }
+
+
     const target: Target = {
         userId: targetData.userId,
         image: targetData.image,
         location: targetData.location,
-        date: targetData.date
+        date: targetData.date,
+        labels: labelValues
     }
 
 

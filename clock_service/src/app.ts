@@ -4,7 +4,6 @@ import {rejects} from "node:assert";
 import {ConfirmChannel, ConsumeMessage} from "amqplib";
 import connectToDatabase from "./database/mongooseConnection";
 import ClockTarget from "./models/clockTarget";
-import * as luxon from "luxon";
 import {DateTime} from "luxon";
 dotenv.config();
 
@@ -35,8 +34,7 @@ if (rabbitMQUrl === undefined) {
     throw new Error('RABBITMQ_URL is not set');
 }
 
-const newContests = new Map<number, ContestTask>();
-const scheduledContests = new Map<number, Date>();
+const runningContests = new Map<number, ContestTask>();
 const exchange = 'contestQueue';
 const outputTopicKey = 'contest.end';
 
@@ -89,8 +87,8 @@ const onMessage = async (msg: ConsumeMessage) => {
             }
 
             await ClockTarget.create(contest).then(() => {
-                scheduledContests.set(contest.contestId, contest.startDate);
-                scheduleTask(contest.startDate, () => startContest(contest.contestId));
+                runningContests.set(contest.contestId, contest);
+               startContest(contest.contestId)
             });
             break;
     }
@@ -107,7 +105,7 @@ function scheduleTask(startTime: Date, task: () => void) {
 }
 
 const startContest = (contestId: number) => {
-    let contest = newContests.get(contestId);
+    let contest = runningContests.get(contestId);
     if (contest === undefined) {
         console.log(`Contest ${contestId} not found`);
         return;
@@ -115,8 +113,7 @@ const startContest = (contestId: number) => {
     contest.status = ContestStatus.ACTIVE;
     ClockTarget.findOneAndUpdate({contestId: contestId}, {status: contest.status}).then(() => {
         if (contest) {
-            newContests.set(contestId, contest);
-            scheduledContests.delete(contestId);
+            runningContests.set(contestId, contest);
             scheduleTask(contest.endDate, () => endContest(contestId));
         }
     });
@@ -125,7 +122,7 @@ const startContest = (contestId: number) => {
 }
 
 const endContest = async (contestId: number) => {
-    let contest = newContests.get(contestId);
+    let contest = runningContests.get(contestId);
     if (contest === undefined) {
         console.log(`Contest ${contestId} not found`);
         return;
@@ -133,7 +130,7 @@ const endContest = async (contestId: number) => {
     contest.status = ContestStatus.ENDED;
     await ClockTarget.findOneAndUpdate({contestId: contestId}, {status: contest.status}).then(async () => {
         console.log(`Contest ${contestId} has ended`);
-        newContests.delete(contestId);
+        runningContests.delete(contestId);
         await channel.publish(exchange, outputTopicKey, Buffer.from(JSON.stringify({contestId: contestId})));
     });
 }
@@ -149,8 +146,8 @@ async function startup(){
                 endDate: contest.endDate,
                 status:ContestStatus.ACTIVE
             }
-            newContests.set(contestTask.contestId, contestTask);
-            scheduleTask(contestTask.startDate, () => startContest(contestTask.contestId));
+            runningContests.set(contestTask.contestId, contestTask);
+            startContest(contest.contestId)
         });
     });
 }

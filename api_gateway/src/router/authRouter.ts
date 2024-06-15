@@ -31,6 +31,13 @@ router.post('/login', (req, res) => {
 
     loginPost(user).then(r => {
         res.json({token: r})
+    }).catch(e => {
+        console.log(e);
+        if (e.response.data) {
+            res.status(400).json(e.response.data);
+        } else if (e.response.status && e.response.details) {
+            res.status(400).json(e);
+        }
     });
 });
 

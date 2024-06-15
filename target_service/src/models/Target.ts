@@ -6,6 +6,7 @@ const targetSchema = new mongoose.Schema({
     userId: {type: String, required: true},
     image: {type: String, unique: true, required: true},
     location: {type: String, unique: true, required: true},
+    labels: {type: Array, unique: true},
     date: {type: Date, unique: true}
 })
 
