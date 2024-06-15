@@ -4,7 +4,6 @@ import cors from 'cors';
 import express from 'express';
 // @ts-ignore
 import passport from 'passport';
-import {getTargets} from './services/targetService';
 
 import * as dotenv from 'dotenv';
 import {router} from "./router/router";

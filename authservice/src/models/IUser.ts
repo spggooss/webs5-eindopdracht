@@ -6,6 +6,7 @@ export interface UserDocument extends Document {
     password: string;
     isOwner: boolean;
     targets: Mongoose.Types.ObjectId[];
+    role: string;
 
     isValidPassword(password: string): Promise<boolean>;
 }
