@@ -22,17 +22,26 @@ import { Request, Response, NextFunction } from 'express';
 export const isLoggedIn = (req: Request, res: Response, next: NextFunction) => {
     passport.authenticate('jwt', { session: false }, (err: any, user: Express.User | undefined) => {
         if (err || !user) {
-            return res.status(401).json({ message: 'Unauthorized' });
+            return res.json({ status: 401, message: 'Unauthorized' });
         }
+        console.error(user)
         req.user = user;
         return next();
     })(req, res, next);
 };
 
-export const checkRole = (role: string) => (req: Request, res: Response, next: NextFunction) => {
+export const hasRole = (role: string) => (req: Request, res: Response, next: NextFunction) => {
     if (req.user && req.user.role === role) {
         return next();
     } else {
-        return res.status(403).json({ message: 'Forbidden' });
+        return res.json({ status: 403, message: 'Forbidden' });
     }
 };
+
+export const hasTargetOwnership = (req: Request, res: Response, next: NextFunction) => {
+    if (req.user && req.user.role === 'admin' && req.user.targets.includes(req.params.id)) {
+        return next();
+    } else {
+        return res.json({ status: 403, message: 'Forbidden' });
+    }
+}

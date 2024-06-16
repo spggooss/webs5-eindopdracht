@@ -124,15 +124,44 @@ router.post('/submissions', CreateTargetValidator, async (req, res) => {
 
 })
 
+router.get('/targets/:id/submissions', async (req, res) => {
+
+        const targetId = req.params.id;
+        const submissions = await Submission.find({targetId: targetId})
+
+        if (submissions) {
+            res.json({status: 200, data: submissions});
+        } else {
+            res.json({status: 404, error: 'Target not found'});
+        }
+
+
+});
+
 router.get('/submissions/:id', async (req, res) => {
 
     const submissionId = req.params.id;
 
-    const target = await Submission.findOne({submissionId: submissionId})
+    const submission = await Submission.findOne({submissionId: submissionId})
 
 
-    if (target) {
-        res.json(target);
+    if (submission) {
+        res.json({status: 200, data: submission});
+    } else {
+        res.json({status: 404, error: 'Target not found'});
+    }
+
+})
+
+router.delete('/submissions/:id', async (req, res) => {
+
+    const submissionId = req.params.id;
+
+    const submission = await Submission.deleteOne({submissionId: submissionId})
+
+
+    if (submission) {
+        res.json({status: 200, data: submission});
     } else {
         res.json({status: 404, error: 'Target not found'});
     }

@@ -7,9 +7,10 @@ const submissionSchema = new mongoose.Schema({
     userId: {type: String, required: true},
     image: {type: String, unique: true, required: true},
     labels: {type: Array, unique: true},
-    date: {type: Date, unique: true},
-    targetUUID: {type: String, required: true, ref: 'Target'},
-    targetId: {type: Number, unique: true},
+    date: {type: Date},
+    score: {type:Number},
+    targetUUID: {type: String, ref: 'Target'},
+    targetId: {type: Number},
     submissionId: {type: Number, unique: true}
 })
 

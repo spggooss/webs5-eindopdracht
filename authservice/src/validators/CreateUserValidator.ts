@@ -25,7 +25,7 @@ function CreateUserValidator(req: Request, res: Response, next: NextFunction) {
     if (error) {
         const {details} = error;
         const errorMessages = details.map(({message}) => message);
-        return res.status(400).json({status: 'Validation error', details: errorMessages});
+        return res.json({status: 400, details: errorMessages});
     }
 
     return next();

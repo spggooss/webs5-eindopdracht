@@ -13,7 +13,6 @@ export function callService(method: string, serviceAddress: any, resource: any, 
                 console.log(body);
                 axios.post(`${serviceAddress}/${resource}`, body, {headers})
                     .then((mess) => {
-                        console.log(mess)
                         resolve(mess.data);
                     }).catch((e) => {
                         console.log(e);
@@ -23,7 +22,6 @@ export function callService(method: string, serviceAddress: any, resource: any, 
             } else if (method === 'get') {
                 axios.get(`${serviceAddress}/${resource}`, {headers})
                     .then((mess) => {
-                        console.log(mess.data);
                         resolve(mess.data);
                     }).catch((e) => {
                         console.log(e);

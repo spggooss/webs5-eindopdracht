@@ -50,30 +50,32 @@ async function verifyJWT(req: {
 
 async function generateJWT(req: Request, res: Response) {
 
-    const {email} = req.body;
+    const loginData = req.body;
+    console.log(loginData);
 
-    const user = await User.findOne({email});
+    const user = await User.findOne({email: loginData.email});
 
     if (!user) {
-        return res.status(400).json({error: 'User not exists'});
+        return res.json({status: 404, error: 'User not exists'});
     }
 
-    const passwordIsValid = await user.isValidPassword(req.body.password);
+    const passwordIsValid = await user.isValidPassword(loginData.password);
 
     if (!passwordIsValid) {
-        return res.status(400).json({error: 'Failed to login, invalid password'});
+        return res.json({status: 400, error: 'Failed to login, invalid password'});
     }
 
-    const {id, role} = user;
+    const {id, role, targets} = user;
 
     const userData = {
         id,
         role,
+        targets
     }
 
     const newToken = jwt.sign(userData, SECRET_KEY, {expiresIn: '1d'});
 
-    return res.status(200).json(newToken);
+    return res.json({status: 200, token: newToken});
 }
 
 async function checkApiKey(req: Request, res: Response, next: NextFunction) {

@@ -67,39 +67,46 @@ interface User {
 }
 
 connectQueue().then(r => console.log('connected to queue')).catch(e => console.log(e));
-//De gebruiker ontvangt hier een register json object omdat de user nog niet bekend is
-//in het systeem
+
+
 router.get('/register', (req, res) => {
     res.json({
         email: "geef hier uw email adres",
         password: "voer hier uw wachtwoord in",
+        role: "geef hier uw rol in"
     })
 })
 
 //gebruiker wordt geregistreerd en ontvangt een JWT
 //Daarmee is de gebruiker automatisch ingelogd
 router.post('/register', CreateUserValidator, async (req, res) => {
-    const userData = req.body;
+    const userRegisterData = req.body;
 
-    if (!userData.email || !userData.password || !userData.role) {
-        return res.status(400).json({error: 'Fill required fields'});
+    if (!userRegisterData.email || !userRegisterData.password || !userRegisterData.role) {
+        return res.json({status: 400, error: 'Fill required fields'});
     }
     const user: User = {
-        email: userData.email,
-        password: userData.password,
-        role: userData.role,
+        email: userRegisterData.email,
+        password: userRegisterData.password,
+        role: userRegisterData.role,
     }
 
 
-    const userAlreadyExists = await User.findOne({email: userData.email});
+    const userAlreadyExists = await User.findOne({email: userRegisterData.email});
 
     if (userAlreadyExists) {
-        return res.status(400).json({error: 'User already exists'});
+        return res.json({status: 400, error: 'User already exists'});
     }
 
-    const {id} = await User.create(user);
+    const {id, role, targets} = await User.create(user);
 
-    const token = jwt.sign({id}, SECRET_KEY, {expiresIn: '1d'});
+    const userData = {
+        id,
+        role,
+        targets
+    }
+
+    const token = jwt.sign(userData, SECRET_KEY, {expiresIn: '1d'});
 
     console.log('publishing to queue');
 
@@ -109,7 +116,7 @@ router.post('/register', CreateUserValidator, async (req, res) => {
         await channel.publish(exchange, registrationKey, Buffer.from(JSON.stringify(user)));
     }
 
-    return res.status(201).json({token});
+    return res.json({status: 201, token: token});
 
 
 })
