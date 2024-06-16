@@ -9,8 +9,6 @@ const userTargetSchema = new Mongoose.Schema({
 })
 
 
-userTargetSchema.plugin(AutoIncrementSimple, [{field: 'targetId'}]);
-
 const UserTarget = Mongoose.model('UserTarget', userTargetSchema);
 
 export default UserTarget;

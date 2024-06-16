@@ -14,13 +14,12 @@ if (!process.env.AUTH_SERVICE_API_KEY) {
     process.exit(1);
 }
 
-const AUTH_SERVICE_API_KEY = process.env.AUTH_SERVICE_API_KEY;
 const SECRET_KEY = process.env.SECRET_KEY;
 
 
-function generateJWT() {
+function generateJWT(apiKey: string) {
 
-    return jwt.sign({AUTH_SERVICE_API_KEY}, SECRET_KEY, {expiresIn: '1d'});
+    return jwt.sign({apiKey}, SECRET_KEY, {expiresIn: '1d'});
 }
 
 export {generateJWT};

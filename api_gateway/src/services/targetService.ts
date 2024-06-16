@@ -1,15 +1,23 @@
 import * as dotenv from 'dotenv';
 import CircuitBreaker from 'opossum';
 import {callService} from "../api_helper";
-import FormData from "form-data";
 
 dotenv.config();
 
-const targetService = process.env.TARGET_SERVICE_URL;
 
-if (targetService === undefined) {
-    throw new Error('TARGET_SERVICE_URL is not set');
+if (!process.env.TARGET_SERVICE_URL) {
+    console.error('No secret key found');
+    process.exit(1);
 }
+
+if (!process.env.TARGET_SERVICE_API_KEY) {
+    console.error('No API key found');
+    process.exit(1);
+}
+
+const TARGET_SERVICE_API_KEY: string = process.env.TARGET_SERVICE_API_KEY;
+
+const targetService = process.env.TARGET_SERVICE_URL;
 
 const circuitBreakerOptions = {
     timeout: 3000, // If our function takes longer than 3 seconds, trigger a failure
@@ -19,44 +27,31 @@ const circuitBreakerOptions = {
 const breaker = new CircuitBreaker(callService, circuitBreakerOptions);
 breaker.fallback(() => "Sorry, out of service right now");
 breaker.on("fallback", (result: any) => {
-    console.log(result);
+    console.log(`Fallback reason: ${result}`);
 });
 
 
 export function getTargets(req: any): Promise<any> {
     return new Promise((resolve, reject) => {
-        //+++circuit breaker patroon +++++++++++++++++++++++++++++++++++++++++++
-        /*
-         implementeer hier de circuitBreaker fire method. Daarmee zorg je
-         ervoor dat je request verloopt via je circuitbreaker
-        */
+
         breaker
-            .fire("get", targetService, '/targets', req.body)
+            .fire("get", targetService, 'targets', req.body, TARGET_SERVICE_API_KEY)
             .then(resolve)
-            .catch(reject);
+            .catch(error => {
+                reject(error);
+            });
 
 
     })
 }
 
-export function addTarget(req: any): Promise<any> {
+export function addTarget(req: any, form: FormData): Promise<any> {
     return new Promise((resolve, reject) => {
-        //+++circuit breaker patroon +++++++++++++++++++++++++++++++++++++++++++
-        /*
-         implementeer hier de circuitBreaker fire method. Daarmee zorg je
-         ervoor dat je request verloopt via je circuitbreaker
-        */
-        const form = new FormData();
-        form.append('image', req.file.buffer, {
-            filename: req.file.originalname,
-            contentType: req.file.mimetype,
-        });
-        form.append('location', req.body.location);
-        form.append('description', req.body.description);
 
+        form.append('userId', req.user.id);
 
         breaker
-            .fire("post", targetService, '/target', form)
+            .fire("post", targetService, 'targets', form, TARGET_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 
@@ -66,13 +61,26 @@ export function addTarget(req: any): Promise<any> {
 
 export function getTargetById(req: any): Promise<any> {
     return new Promise((resolve, reject) => {
-        //+++circuit breaker patroon +++++++++++++++++++++++++++++++++++++++++++
-        /*
-         implementeer hier de circuitBreaker fire method. Daarmee zorg je
-         ervoor dat je request verloopt via je circuitbreaker
-        */
+
         breaker
-            .fire("get", targetService, '/targets/' + req.params.id, req.body)
+            .fire("get", targetService, 'targets/' + req.params.id, req.body, TARGET_SERVICE_API_KEY)
+            .then(response => {
+                    resolve(response)
+                }
+            )
+            .catch(error => {
+                reject(error);
+            });
+
+
+    })
+}
+
+export function getImageByTargetId(req: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+
+        breaker
+            .fire("get", targetService, 'images/' + req.params.id, req.body, TARGET_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 
@@ -80,11 +88,18 @@ export function getTargetById(req: any): Promise<any> {
     })
 }
 
+export function deleteTargetById(req: any): Promise<any> {
+    return new Promise((resolve, reject) => {
 
-//gebruik de .fallback(()=>{}) functie om bijv. een bericht naar de gebruiker te sturen.
-//Deze kun je hier maken.
+        breaker
+            .fire("delete", targetService, 'targets/' + req.params.id, req.body, TARGET_SERVICE_API_KEY)
+            .then(resolve)
+            .catch(reject);
 
-//Helper functie om het gedoe met slashes te voorkomen
+
+    })
+}
+
 
 
 

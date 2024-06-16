@@ -14,11 +14,6 @@ if (!process.env.API_KEY) {
     process.exit(1);
 }
 
-if (!process.env.TARGET_SERVICE_API_KEY) {
-    console.error('No API key found');
-    process.exit(1);
-}
-
 const SECRET_KEY = process.env.SECRET_KEY;
 const API_KEY = process.env.API_KEY;
 
@@ -32,7 +27,8 @@ async function checkApiKey(req: Request, res: Response, next: NextFunction) {
         return res.status(400).json({error: 'No token provided'});
     }
 
-    const token = req.headers.authorization;
+
+    const token = req.headers.authorization?.split(' ')[1]; // Assuming 'Authorization: Bearer <token>'
 
     return jwt.verify(token, SECRET_KEY, async (err: any, decoded: any) => {
         if (err) {
@@ -40,7 +36,7 @@ async function checkApiKey(req: Request, res: Response, next: NextFunction) {
             return res.status(400).json({error: err});
         }
 
-        if (API_KEY !== decoded.TARGET_SERVICE_API_KEY) {
+        if (API_KEY !== decoded.apiKey) {
             return res.status(400).json({error: 'Invalid API Key'});
         }
 

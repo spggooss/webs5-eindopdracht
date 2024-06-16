@@ -64,9 +64,14 @@ async function generateJWT(req: Request, res: Response) {
         return res.status(400).json({error: 'Failed to login, invalid password'});
     }
 
-    const {id} = user;
+    const {id, role} = user;
 
-    const newToken = jwt.sign({id}, SECRET_KEY, {expiresIn: '1d'});
+    const userData = {
+        id,
+        role,
+    }
+
+    const newToken = jwt.sign(userData, SECRET_KEY, {expiresIn: '1d'});
 
     return res.status(200).json(newToken);
 }
@@ -81,7 +86,8 @@ async function checkApiKey(req: Request, res: Response, next: NextFunction) {
         return res.status(400).json({error: 'No token provided'});
     }
 
-    const token = req.headers.authorization;
+    const token = req.headers.authorization?.split(' ')[1]; // Assuming 'Authorization: Bearer <token>'
+
 
     return jwt.verify(token, SECRET_KEY, async (err: any, decoded: any) => {
         if (err) {
@@ -89,7 +95,7 @@ async function checkApiKey(req: Request, res: Response, next: NextFunction) {
             return res.status(400).json({error: err});
         }
 
-        if (API_KEY !== decoded.AUTH_SERVICE_API_KEY) {
+        if (API_KEY !== decoded.apiKey) {
             return res.status(400).json({error: 'Invalid API Key'});
         }
 

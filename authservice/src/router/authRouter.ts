@@ -63,6 +63,7 @@ async function connectQueue() {
 interface User {
     email: string,
     password: string,
+    role: string
 }
 
 connectQueue().then(r => console.log('connected to queue')).catch(e => console.log(e));
@@ -80,12 +81,13 @@ router.get('/register', (req, res) => {
 router.post('/register', CreateUserValidator, async (req, res) => {
     const userData = req.body;
 
-    if (!userData.email || !userData.password) {
+    if (!userData.email || !userData.password || !userData.role) {
         return res.status(400).json({error: 'Fill required fields'});
     }
     const user: User = {
         email: userData.email,
         password: userData.password,
+        role: userData.role,
     }
 
 

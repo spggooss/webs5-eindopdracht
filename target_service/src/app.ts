@@ -3,25 +3,27 @@ import express from 'express';
 import passport from 'passport';
 import * as dotenv from 'dotenv';
 import passportStrategy from './passport/passport';
-import {authRouter} from "./router/targetRouter";
+import {targetRouter} from "./router/targetRouter";
 import connectToDatabase from "./database/mongooseConnection";
 import {checkApiKey} from "./middleware/AuthMiddleware";
+import {submissionRouter} from "./router/submissionRouter";
 
 dotenv.config();
 
 const app = express();
-const port: number = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+const port: number = process.env.PORT ? parseInt(process.env.PORT) : 3003;
 
 connectToDatabase();
 
 passportStrategy(passport);
 app.use(passport.initialize());
 app.use(cors())
-app.use(express.json());
+app.use(express.json({ limit: '200mb' }));
 
 app.use('/', checkApiKey)
 
-app.use(authRouter)
+app.use(targetRouter)
+app.use(submissionRouter)
 
 
 app.listen(port, () => {

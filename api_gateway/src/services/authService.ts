@@ -10,6 +10,13 @@ if (authService === undefined) {
     throw new Error('AUTH_SERVICE_URL is not set');
 }
 
+if (!process.env.AUTH_SERVICE_API_KEY) {
+    console.error('No API key found');
+    process.exit(1);
+}
+
+const AUTH_SERVICE_API_KEY: string = process.env.AUTH_SERVICE_API_KEY;
+
 const circuitBreakerOptions = {
     timeout: 5000, // If our function takes longer than 5 seconds, trigger a failure
     errorThresholdPercentage: 50, // When 50% of requests fail, trip the circuit
@@ -25,7 +32,7 @@ export function registerPost(body: any): Promise<any> {
          ervoor dat je request verloopt via je circuitbreaker
         */
         breaker
-            .fire("post", authService, '/register', body)
+            .fire("post", authService, 'register', body, AUTH_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 
@@ -41,7 +48,7 @@ export function loginPost(body: any): Promise<any> {
          ervoor dat je request verloopt via je circuitbreaker
         */
         breaker
-            .fire("post", authService, '/login', body)
+            .fire("post", authService, 'login', body, AUTH_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 
