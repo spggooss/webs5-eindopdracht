@@ -1,8 +1,10 @@
-import express from 'express';
+import express, {NextFunction, Response} from 'express';
 import multer from "multer";
-import { addTarget, getTargetById, getTargets } from "../services/targetService";
-import { hasTargetOwnership, isLoggedIn } from "../middleware/authMiddleware";
+import {addSubmission, getTargetById, getTargets} from "../services/targetService";
+import {hasSubmissionOwnership, hasTargetOwnership, isLoggedIn} from "../middleware/authMiddleware";
+import {RequestCustom} from "./types";
 
+const api_url = process.env.API_URL || 'http://localhost:3000';
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
@@ -67,10 +69,11 @@ const router = express.Router();
  *       400:
  *         description: Bad request
  */
-router.get('/targets/:id/submissions', isLoggedIn, hasTargetOwnership, (req, res) => {
+//@ts-ignore
+router.get('/targets/:id/submissions', isLoggedIn, hasTargetOwnership, (req: Request, res: Response, next: NextFunction) => {
     getTargets(req)
         .then(targets => {
-            res.send(targets);
+            res.json(targets);
         })
         .catch(e => {
             res.status(400).send(e);
@@ -104,8 +107,11 @@ router.get('/targets/:id/submissions', isLoggedIn, hasTargetOwnership, (req, res
  *       400:
  *         description: Bad request
  */
-router.post('/submissions', upload.single('image'), isLoggedIn, (req, res) => {
+//@ts-ignore
+
+router.post('/submissions', upload.single('image'), isLoggedIn, (req: RequestCustom, res: Response) => {
     const file = req.file;
+    console.log(file);
 
     if (!file) {
         return res.status(400).send({ error: 'Image required' });
@@ -114,17 +120,16 @@ router.post('/submissions', upload.single('image'), isLoggedIn, (req, res) => {
     const blob = new Blob([file.buffer], { type: file.mimetype });
     const form = new FormData();
 
-    form.append('location', req.body.location);
-    form.append('date', req.body.date);
+    form.append('target_id', req.body.target_id);
     form.append('image', blob, file.originalname);
 
-    addTarget(req, form)
+    addSubmission(req, form)
         .then(response => {
-            if (response.status === 404) {
-                const target = JSON.parse(response.data);
-                res.send(target);
+            if (response.status === 201) {
+                const submission = response.data
+                res.send(submission);
             } else {
-                res.status(response.status).send(response.data);
+                res.status(response.status).send({error: response.error});
             }
         })
         .catch(e => {
@@ -133,6 +138,7 @@ router.post('/submissions', upload.single('image'), isLoggedIn, (req, res) => {
         });
 });
 
+// @ts-ignore
 /**
  * @swagger
  * /submissions/{id}:
@@ -154,20 +160,24 @@ router.post('/submissions', upload.single('image'), isLoggedIn, (req, res) => {
  *       404:
  *         description: Submission not found
  */
-router.delete('/submissions/:id', isLoggedIn, (req, res) => {
-    getTargetById(req)
-        .then(response => {
-            if (response.status === 404) {
-                const target = JSON.parse(response.data);
-                res.send(target);
-            } else {
-                res.status(response.status).send(response.error);
-            }
-        })
-        .catch(e => {
-            console.log(e);
-            res.status(400).send(e);
-        });
-});
+router.delete('/submissions/:id',
+    //@ts-ignore
+    isLoggedIn,
+    hasSubmissionOwnership,
+    (req: Request, res: Response) => {
+        getTargetById(req)
+            .then(response => {
+                if (response.status === 404) {
+                    const target = JSON.parse(response.data);
+                    res.send(target);
+                } else {
+                    res.status(response.status).send(response.error);
+                }
+            })
+            .catch(e => {
+                console.log(e);
+                res.status(400).send(e);
+            });
+    });
 
 export { router as submissionsRouter };

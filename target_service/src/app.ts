@@ -7,6 +7,7 @@ import {targetRouter} from "./router/targetRouter";
 import connectToDatabase from "./database/mongooseConnection";
 import {checkApiKey} from "./middleware/AuthMiddleware";
 import {submissionRouter} from "./router/submissionRouter";
+import {router} from "./router/router";
 
 dotenv.config();
 
@@ -19,12 +20,12 @@ passportStrategy(passport);
 app.use(passport.initialize());
 app.use(cors())
 app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
+
 
 app.use('/', checkApiKey)
 
-app.use(targetRouter)
-app.use(submissionRouter)
-
+app.use(router)
 
 app.listen(port, () => {
     console.log('Server is up on port ' + port);

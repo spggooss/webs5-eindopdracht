@@ -10,9 +10,8 @@ dotenv.config();
 connectToDatabase();
 
 interface StartContestMessage {
-   contestId: number;
-   startDate: Date;
-   endDate: Date;
+   targetId: number;
+   date: string;
 }
 
 enum ContestStatus {
@@ -22,9 +21,8 @@ enum ContestStatus {
 }
 
 interface ContestTask{
-    contestId: number;
-    startDate: Date;
-    endDate: Date;
+    targetId: number;
+    date: Date;
     status: ContestStatus;
 }
 
@@ -35,34 +33,43 @@ if (rabbitMQUrl === undefined) {
 }
 
 const runningContests = new Map<number, ContestTask>();
-const exchange = 'contestQueue';
+const timerExchange = 'timerQueue';
+const contestEndedExchange = 'contestEndedQueue';
 const outputTopicKey = 'contest.end';
 
-let channel: ChannelWrapper, connection;  //global variables
+let timerChannel: ChannelWrapper, contestEndedChannel: ChannelWrapper, connection;  //global variables
 
-const inputTopicKeys: string[] = ['contest.start'];
+const inputTopicKeys: string[] = ['target.new'];
 
 
 async function connectQueue() {
     try {
         connection = amqp.connect(rabbitMQUrl, {heartbeatIntervalInSeconds: 5});
-        channel = connection.createChannel({
-            setup: function (channel: ConfirmChannel) {
+        timerChannel = connection.createChannel({
+            setup: async function (channel: ConfirmChannel) {
                 // `channel` here is a regular amqplib `ConfirmChannel`.
                 // Note that `this` here is the channelWrapper instance.
-                return channel.assertQueue(exchange, {durable: true});
+                return channel.assertQueue(timerExchange, {durable: true});
+            },
+        })
+
+        contestEndedChannel = connection.createChannel({
+            setup: async function (channel: ConfirmChannel) {
+                // `channel` here is a regular amqplib `ConfirmChannel`.
+                // Note that `this` here is the channelWrapper instance.
+                return channel.assertQueue(contestEndedExchange, {durable: true});
             },
         })
 
         console.log('Connected to RabbitMQ');
 
         inputTopicKeys.forEach(function (key) {
-            channel.addSetup(function (channel: ConfirmChannel) {
-                channel.bindQueue(exchange, exchange, key);
+            timerChannel.addSetup(function (channel: ConfirmChannel) {
+                channel.bindQueue(timerExchange, timerExchange, key);
             });
         });
 
-        await channel.consume(exchange, onMessage, {
+        await timerChannel.consume(timerExchange, onMessage, {
             noAck: true
         });
 
@@ -72,23 +79,24 @@ async function connectQueue() {
 }
 
 const onMessage = async (msg: ConsumeMessage) => {
+    console.log('Received message');
     if (msg === null) {
         return;
     }
-
+    console.log(`Received message: ${msg.content.toString()}`);
     const queueMessage: StartContestMessage = JSON.parse(msg.content.toString());
     switch (msg.fields.routingKey) {
-        case 'contest.start':
+        case 'target.new':
+            const endTime = DateTime.fromISO(queueMessage.date).toJSDate();
             let contest: ContestTask = {
-                contestId: queueMessage.contestId,
-                startDate: queueMessage.startDate,
-                endDate: queueMessage.endDate,
+                targetId: queueMessage.targetId,
+                date: endTime,
                 status: ContestStatus.INACTIVE
             }
 
             await ClockTarget.create(contest).then(() => {
-                runningContests.set(contest.contestId, contest);
-               startContest(contest.contestId)
+                runningContests.set(contest.targetId, contest);
+               startContest(contest.targetId)
             });
             break;
     }
@@ -99,56 +107,65 @@ function scheduleTask(startTime: Date, task: () => void) {
     const currentTime = new Date().getTime(); // Current time in milliseconds
     const scheduledTime = startTime.getTime() // Scheduled time today
     const delay = scheduledTime - currentTime; // Delay until scheduled time
+    console.log(`Current time: ${delay}`);
     if (delay > 0) {
         setTimeout(task, delay); // Execute task after delay
     }
 }
 
-const startContest = (contestId: number) => {
-    let contest = runningContests.get(contestId);
+const startContest = (targetId: number) => {
+    let contest = runningContests.get(targetId);
     if (contest === undefined) {
-        console.log(`Contest ${contestId} not found`);
+        console.log(`Contest ${targetId} not found`);
         return;
     }
     contest.status = ContestStatus.ACTIVE;
-    ClockTarget.findOneAndUpdate({contestId: contestId}, {status: contest.status}).then(() => {
+    ClockTarget.findOneAndUpdate({targetId: targetId}, {status: contest.status}).then(() => {
         if (contest) {
-            runningContests.set(contestId, contest);
-            scheduleTask(contest.endDate, () => endContest(contestId));
+            runningContests.set(targetId, contest);
+            scheduleTask(contest.date, () => endContest(targetId));
         }
     });
 
 
 }
 
-const endContest = async (contestId: number) => {
-    let contest = runningContests.get(contestId);
+const endContest = async (targetId: number) => {
+    let contest = runningContests.get(targetId);
     if (contest === undefined) {
-        console.log(`Contest ${contestId} not found`);
+        console.log(`Contest ${targetId} not found`);
         return;
     }
     contest.status = ContestStatus.ENDED;
-    await ClockTarget.findOneAndUpdate({contestId: contestId}, {status: contest.status}).then(async () => {
-        console.log(`Contest ${contestId} has ended`);
-        runningContests.delete(contestId);
-        await channel.publish(exchange, outputTopicKey, Buffer.from(JSON.stringify({contestId: contestId})));
+    console.log(contest)
+    ClockTarget.findOneAndUpdate({targetId: targetId}, {status: contest.status}).then(async () => {
+        console.log(`Contest ${targetId} has ended`);
+        runningContests.delete(targetId);
+        await contestEndedChannel.publish(contestEndedExchange, outputTopicKey, Buffer.from(JSON.stringify({targetId: targetId})));
     });
 }
 connectQueue().then(r => console.log('connected to queue')).catch(e => console.log(e));
 
 async function startup(){
-    const currentDate = DateTime.now();
-    await ClockTarget.find({startDate: {$gte: currentDate.startOf('day'), $lte: currentDate.endOf('day')}}).then((contests) => {
-        contests.forEach((contest) => {
+    const currentTime = new Date();
+    await ClockTarget.find({date: {$gte: currentTime}, status: { $in: [ContestStatus.ACTIVE, ContestStatus.INACTIVE]}}).then((contests) => {
+        contests.forEach(async (contest) => {
             let contestTask: ContestTask = {
-                contestId: contest.contestId,
-                startDate: contest.startDate,
-                endDate: contest.endDate,
-                status:ContestStatus.ACTIVE
+                targetId: contest.targetId,
+                date: contest.date,
+                status: ContestStatus.ACTIVE
             }
-            runningContests.set(contestTask.contestId, contestTask);
-            startContest(contest.contestId)
+            await ClockTarget.findOneAndUpdate({targetId: contest.targetId}, {status: contestTask.status});
+            runningContests.set(contestTask.targetId, contestTask);
+            startContest(contest.targetId)
         });
+    });
+
+    ClockTarget.findOneAndUpdate({date: {$lt: currentTime}, status: {$ne: ContestStatus.ENDED}}, {status: ContestStatus.ENDED}).then(async (contest) => {
+        if(contest) {
+            console.log(`Contest ${contest.targetId} has ended in the past`);
+            await contestEndedChannel.publish(contestEndedExchange, outputTopicKey, Buffer.from(JSON.stringify({targetId: contest.targetId})));
+        }
     });
 }
 

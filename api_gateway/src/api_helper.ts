@@ -1,16 +1,18 @@
 import axios from "axios";
 import {generateJWT} from "./helpers/generateApiJwt";
 
-export function callService(method: string, serviceAddress: any, resource: any, body: any, apiKey: string) {
+export function callService(method: string, serviceAddress: any, resource: any, body: any, hasImage: boolean, apiKey: string) {
     return new Promise((resolve, reject) => {
         try {
             const token = generateJWT(apiKey); // Call your function to generate JWT token
             const headers = {
                 Authorization: `Bearer ${token}`,
-                'content-type': 'multipart/form-data'
+                'content-type': 'application/json'
             };
             if (method === 'post') {
-                console.log(body);
+                if(hasImage){
+                    headers['content-type'] = 'multipart/form-data';
+                }
                 axios.post(`${serviceAddress}/${resource}`, body, {headers})
                     .then((mess) => {
                         resolve(mess.data);
@@ -20,6 +22,7 @@ export function callService(method: string, serviceAddress: any, resource: any, 
                 });
 
             } else if (method === 'get') {
+                console.log(`${serviceAddress}/${resource}`);
                 axios.get(`${serviceAddress}/${resource}`, {headers})
                     .then((mess) => {
                         resolve(mess.data);

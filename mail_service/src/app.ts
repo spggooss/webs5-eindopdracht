@@ -28,10 +28,10 @@ if (!process.env.RABBITMQ_URL) {
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 const fromMail: string = process.env.FROM_MAIL;
 
-const exchange: string = 'contestQueue';
+const exchange: string = 'emailQueue';
 const rabbitMQUrl: string = process.env.RABBITMQ_URL;
 
-const topicKeys: string[] = ['contest.end', 'contest.registration'];
+const topicKeys: string[] = ['contest.end', 'user.registration'];
 
 
 interface Score {
@@ -134,7 +134,7 @@ const onMessage = (msg: ConsumeMessage) => {
             });
             break;
 
-        case 'contest.registration':
+        case 'user.registration':
             const registrationMessage = queueMessage as RegistrationMessage;
             const registrationHtml = `<h1>Registration successful</h1><br><br><p>Password: ${registrationMessage.password}</p>`;
             emailMsgs.push({

@@ -1,13 +1,15 @@
-import express from 'express';
+import express, {Request, Response} from 'express';
 import * as dotenv from 'dotenv';
-import Target from "../models/Target";
+import Target, {LabelAccuracy} from "../models/Target";
 import amqp, {AmqpConnectionManager, ChannelWrapper} from "amqp-connection-manager";
 import vision from '@google-cloud/vision';
+
 import { ParsedQs } from 'qs';
 import {CreateTargetValidator} from "../validators/CreateTargetValidator";
 
 import multer from "multer";
 import mongoose from "mongoose";
+import {ConfirmChannel} from "amqplib";
 
 const storage = multer.memoryStorage();
 const upload = multer({storage: storage});
@@ -28,15 +30,18 @@ if (!process.env.RABBITMQ_URL) {
 }
 
 const rabbitMQUrl: string = process.env.RABBITMQ_URL;
-const SECRET_KEY = process.env.SECRET_KEY;
-const messageBacklog: any[] = [];
+const timerMessageBacklog: any[] = [];
+const submissionTargetMessageBacklog: any[] = [];
 
 
-let channel: ChannelWrapper, connection: AmqpConnectionManager;
 
-const exchange = 'contestQueue';
+let submissionTargetChannel: ChannelWrapper, timerChannel: ChannelWrapper, connection: AmqpConnectionManager;
+
+const submissionTargetExchange = 'submissionTargetQueue';
+const timerExchange = 'timerQueue';
 
 const newTargetKey = 'target.new';
+const userCreatedTargetKey = 'target.user.created';
 
 async function connectQueue() {
     try {
@@ -51,13 +56,30 @@ async function connectQueue() {
         connection.on('close', () => {
             console.log('Connection closed');
         });
-        channel = connection.createChannel()
+        timerChannel = connection.createChannel({
+            setup: async function (channel: ConfirmChannel) {
+                // `channel` here is a regular amqplib `ConfirmChannel`.
+                // Note that `this` here is the channelWrapper instance.
+                return channel.assertQueue(timerExchange, {durable: true});
+            },
+        })
+        submissionTargetChannel = connection.createChannel({
+            setup: async function (channel: ConfirmChannel) {
+                // `channel` here is a regular amqplib `ConfirmChannel`.
+                // Note that `this` here is the channelWrapper instance.
+                return channel.assertQueue(submissionTargetExchange, {durable: true});
+            },
+        })
 
         connection.on('connect', async () => {
             console.log('Publishing backlog to queue');
-            while (messageBacklog.length > 0) {
-                await channel.publish(exchange, newTargetKey, Buffer.from(JSON.stringify(messageBacklog[0])));
-                messageBacklog.shift();
+            while (submissionTargetMessageBacklog.length > 0) {
+                await submissionTargetChannel.publish(submissionTargetExchange, userCreatedTargetKey, Buffer.from(JSON.stringify(submissionTargetMessageBacklog[0])));
+                submissionTargetMessageBacklog.shift();
+            }
+            while (timerMessageBacklog.length > 0) {
+                await timerChannel.publish(timerExchange, newTargetKey, Buffer.from(JSON.stringify(timerMessageBacklog[0])));
+                timerMessageBacklog.shift();
             }
         });
 
@@ -74,43 +96,42 @@ interface Target {
     image: string,
     location: string,
     date: Date,
-    labels: string[]
+    labels: { label: string; score: number; }[]
 }
 
 interface TargetData {
-    userId: string,
+    user_id: string,
     location: string,
     date: Date
 }
 
 
-router.post('/targets', upload.single('image'), async (req, res) => {
-console.log(req.file)
+router.post('/targets', upload.single('image'), CreateTargetValidator, async (req, res) => {
 try {
     const targetData: TargetData = req.body;
 
     const file = req.file
 
     if (!file) {
-        return res.send({ status: 400, data: {error: 'Image required'}});
+        return res.json({ status: 400, data: {error: 'Image required'}});
     }
 
-    if (!targetData.userId || !req.file || !targetData.location || !targetData.date) {
-        return res.status(400).json({error: 'Fill required fields'});
+    if (!targetData.user_id || !req.file || !targetData.location || !targetData.date) {
+        return res.json({status: 400, error: 'Fill required fields'});
     }
 
     const client = new vision.ImageAnnotatorClient();
 
     const [result] = await client.labelDetection(file.buffer);
     const labels = result.labelAnnotations;
-    let labelValues: string[] = [];
+    let labelValues: LabelAccuracy[] = [];
     if (labels !== undefined && labels !== null) {
-        labelValues = labels.map((label) => label.description ?? '');
+        labelValues = labels.map((label) => {return {label: label.description ?? '', score: label.score ?? 0}});
     }
 
 
     const target: Target = {
-        userId: targetData.userId,
+        userId: targetData.user_id,
         image: file.buffer.toString('base64'),
         location: targetData.location,
         date: targetData.date,
@@ -124,17 +145,35 @@ try {
         return res.json({status: 400, data: {error: 'Target already exists'}});
     }
 
-    await Target.create(target);
+    const targetModel = await Target.create(target);
+
 
     console.log('publishing to queue');
 
-    if (!connection.isConnected()) {
-        messageBacklog.push(target);
-    } else {
-        await channel.publish(exchange, newTargetKey, Buffer.from(JSON.stringify(target)));
+    const targetModelData = {
+        targetUUID: targetModel._id,
+        userId: targetModel.userId,
+        date: targetModel.date,
+        targetId: targetModel.targetId
     }
 
-    return res.status(200).json({target});
+    if (!connection.isConnected()) {
+        submissionTargetMessageBacklog.push(targetModelData);
+        timerMessageBacklog.push(targetModelData);
+    } else {
+
+        await timerChannel.publish(timerExchange, newTargetKey, Buffer.from(JSON.stringify(targetModelData)));
+        await submissionTargetChannel.publish(submissionTargetExchange, userCreatedTargetKey, Buffer.from(JSON.stringify(targetModelData)));
+    }
+
+
+    const targetResponse = {
+        _id: targetModel._id,
+        location: targetModel.location,
+        date: targetModel.date,
+        targetId: targetModel.targetId
+    }
+    return res.json({status: 200, data: targetResponse});
 } catch (e) {
     console.log(e);
 
@@ -164,12 +203,12 @@ router.get('/images/:id', async function(req, res) {
         const target = await Target.findOne({__v: req.params.id });
 
         if (!target) {
-            res.status(404).json({error: 'Target not found'});
+            res.json({status: 400, error: 'Target not found'});
             return;
         }
 
 
-        res.json({status: 200, image: target.image});
+        res.json({status: 200, data: target.image});
 
     } catch(error) {
         if (error instanceof mongoose.Error.ValidationError) {
@@ -180,9 +219,31 @@ router.get('/images/:id', async function(req, res) {
     }
 });
 
+router.get('/targets/:id', async (req, res) => {
+
+    const targetId = req.params.id;
+    console.log(req)
+    console.log(targetId)
+
+    const target = await Target.findOne({targetId: targetId})
+
+
+
+    if (target) {
+        const targetData = {
+            _id: target._id,
+            location: target.location,
+            date: target.date,
+        }
+        res.json({status: 200, data: targetData});
+    } else {
+        res.json({status: 404, error: 'Target not found'});
+    }
+
+})
+
 
 router.get('/targets', async (req, res) => {
-
 
     const location = req.query.location;
 
@@ -191,33 +252,48 @@ router.get('/targets', async (req, res) => {
 
     if(location) {
         if (page && limit) {
-            const targets = await Target.find({location: location}).skip((page - 1) * limit).limit(limit).select('_id image location');
-            res.json(targets);
+            const targets = await Target.find({location: location}).skip((page - 1) * limit).limit(limit).select('_id location date targetId');
+            const targetData = targets.map((target) => {
+                return {
+                    _id: target._id,
+                    location: target.location,
+                    date: target.date,
+                    targetId: target.targetId
+                }
+            });
+            res.json({status: 200, data: targetData});
         } else {
-            const targets = await Target.find({location: location}).select('_id image location');
-            res.json(targets);
-        }
+            const targets = await Target.find({location: location}).select('_id location date targetId');
+            const targetData = targets.map((target) => {
+                return {
+                    _id: target._id,
+                    location: target.location,
+                    date: target.date,
+                    targetId: target.targetId
+                }
+            });
+            res.json({status: 200, data: targetData});        }
     } else if (page && limit) {
-        const targets = await Target.find().skip((page - 1) * limit).limit(limit).select('_id image location');
-        res.json(targets);
-    } else {
-        const targets = await Target.find().select('_id image location');
-        res.json(targets);
-    }
-
-})
-
-router.get('/targets/:id', async (req, res) => {
-
-    const targetId = req.params.id;
-
-    const target = await Target.findOne({targetId: targetId})
-
-
-    if (target) {
-        res.status(200).json(target);
-    } else {
-        res.json({status: 404, error: 'Target not found'});
+        const targets = await Target.find().skip((page - 1) * limit).limit(limit).select('_id location date targetId');
+        const targetData = targets.map((target) => {
+            return {
+                _id: target._id,
+                location: target.location,
+                date: target.date,
+                targetId: target.targetId
+            }
+        });
+        res.json({status: 200, data: targetData});    } else {
+        const targets = await Target.find().select('_id location date targetId');
+        const targetData = targets.map((target) => {
+            return {
+                _id: target._id,
+                location: target.location,
+                date: target.date,
+                targetId: target.targetId
+            }
+        });
+        res.json({status: 200, data: targetData});
     }
 
 })

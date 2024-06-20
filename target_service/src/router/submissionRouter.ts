@@ -1,10 +1,14 @@
 import * as dotenv from 'dotenv';
 import amqp, {AmqpConnectionManager, ChannelWrapper} from "amqp-connection-manager";
 import vision from '@google-cloud/vision';
-import {CreateTargetValidator} from "../validators/CreateTargetValidator";
-import Submission from "../models/Submission";
-import express from "express";
+import Submission, {LabelAccuracy} from "../models/Submission";
+import express, {Request, Response} from "express";
+import Target from "../models/Target";
+import multer from "multer";
 
+
+const storage = multer.memoryStorage();
+const upload = multer({storage: storage});
 
 const router = express.Router();
 
@@ -21,15 +25,14 @@ if (!process.env.RABBITMQ_URL) {
 }
 
 const rabbitMQUrl: string = process.env.RABBITMQ_URL;
-const SECRET_KEY = process.env.SECRET_KEY;
 const messageBacklog: any[] = [];
 
 
 let channel: ChannelWrapper, connection: AmqpConnectionManager;
 
-const exchange = 'contestQueue';
+const exchange = 'submissionTargetQueue';
 
-const newTargetKey = 'target.new';
+const newSubmissionKey = 'submission.new';
 
 async function connectQueue() {
     try {
@@ -49,7 +52,7 @@ async function connectQueue() {
         connection.on('connect', async () => {
             console.log('Publishing backlog to queue');
             while (messageBacklog.length > 0) {
-                await channel.publish(exchange, newTargetKey, Buffer.from(JSON.stringify(messageBacklog[0])));
+                await channel.publish(exchange, newSubmissionKey, Buffer.from(JSON.stringify(messageBacklog[0])));
                 messageBacklog.shift();
             }
         });
@@ -66,63 +69,134 @@ interface Submission {
     targetId: number,
     image: string,
     userId: string,
-    labels: string[]
+    labels: LabelAccuracy[],
+    score: number
+    targetUUID: string,
 }
 
 interface SubmissionData {
-    targetId: number,
-    image: string,
-    userId: string,
+    target_id: number,
+    user_id: string,
 }
+router.post('/submissions', upload.single('image'), async (req: Request, res: Response) => {
 
-
-router.post('/submissions', CreateTargetValidator, async (req, res) => {
     const submissionData: SubmissionData = req.body;
 
-    console.log(JSON.stringify(submissionData));
+    if (!req.body.user_id || !submissionData.target_id) {
+        return res.json({status: 400, error: 'Fill required fields'});
+    }
 
-    if (!submissionData.userId || !submissionData.image || !submissionData.targetId) {
-        return res.status(400).json({error: 'Fill required fields'});
+    const file = req.file
+
+    if (!file) {
+        return res.json({ status: 400, data: {error: 'Image required'}});
+    }
+
+    const target = await Target.findOne({targetId: submissionData.target_id});
+
+    if (!target) {
+        return res.json({status: 404, error: 'Target not found'});
+    }
+
+    if(target.date < new Date()) {
+        return res.json({status: 400, error: 'Target has expired'});
+    }
+
+    const imageString = file.buffer.toString('base64');
+    const submissionAlreadyExists = await Submission.findOne({
+        $or: [
+            { image: imageString },
+            {
+                $and: [
+                    { userId: submissionData.user_id },
+                    { targetId: submissionData.target_id }
+                ]
+            }
+        ]
+    });
+
+    if (submissionAlreadyExists) {
+        return res.json({status: 400, error: 'Submission already exists'});
     }
 
     const client = new vision.ImageAnnotatorClient();
 
-    const [result] = await client.labelDetection(submissionData.image);
+    const [result] = await client.labelDetection(file.buffer);
     const labels = result.labelAnnotations;
-    let labelValues: string[] = [];
+    let labelValues: LabelAccuracy[] = [];
     if (labels !== undefined  && labels !== null) {
-        labelValues = labels.map((label) => label.description ?? '');
+        labelValues = labels.map((label) => {return {label: label.description ?? '', score: label.score ?? 0}});
     }
 
+    const targetLabels = target?.labels.map((label) => {
+        return {label: label.label, score: label.score};
+    }) ?? [];
+
+    const submissionLabels = labelValues.map((label) => {
+        return {label: label.label, score: label.score};
+    });
+
+
+    const score = calculateSimilarityScore(targetLabels, submissionLabels);
+
+    console.log('Score:', score);
 
     const submission: Submission = {
-        userId: submissionData.userId,
-        image: submissionData.image,
-        targetId: submissionData.targetId,
-        labels: labelValues
+        userId: submissionData.user_id,
+        image: imageString,
+        targetId: submissionData.target_id,
+        labels: submissionLabels,
+        targetUUID: target?._id,
+        score: score
     }
 
 
-    const targetAlreadyExists = await Submission.findOne({userId: submission.userId, targetId: submission.targetId});
-
-    if (targetAlreadyExists) {
-        return res.status(400).json({error: 'Submission already exists'});
-    }
-
-    await Submission.create(submission);
+    const submissionModel = await Submission.create(submission);
 
     console.log('publishing to queue');
 
-    if (!connection.isConnected()) {
-        messageBacklog.push(submission);
-    } else {
-        await channel.publish(exchange, newTargetKey, Buffer.from(JSON.stringify(submission)));
+    const submissionResponse = {
+        _id: submissionModel._id,
+        targetId: submissionModel.targetId,
+        userId: submissionModel.userId,
+        submissionId: submissionModel.submissionId,
+        score: submissionModel.score
     }
 
-    return res.status(201).json({submission});
+    if (!connection.isConnected()) {
+        messageBacklog.push(submissionResponse);
+    } else {
+        await channel.publish(exchange, newSubmissionKey, Buffer.from(JSON.stringify(submissionResponse)));
+    }
+
+    return res.json({status: 201, data: submissionResponse});
 
 
 })
+
+function calculateSimilarityScore(origLabels: LabelAccuracy[], newLabels: LabelAccuracy[]): number {
+    let totalScore = 0.0;
+    let maxPossibleScore = 0.0;
+
+    // Create a map of the original labels with their accuracy
+    const origLabelMap = new Map<string, number>();
+    for (const { label, score } of origLabels) {
+        origLabelMap.set(label, score);
+        maxPossibleScore += score * score;  // assume max score when matched perfectly
+    }
+
+    for (const { label, score: newAccuracy } of newLabels) {
+        if (origLabelMap.has(label)) {
+            const origAccuracy = origLabelMap.get(label)!;
+            // Calculate the score for this label
+            const labelScore = origAccuracy * newAccuracy;
+            totalScore += labelScore;
+        }
+    }
+
+    // Normalize the score to a range of 1-100
+    return maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
+}
 
 router.get('/targets/:id/submissions', async (req, res) => {
 
@@ -158,6 +232,21 @@ router.delete('/submissions/:id', async (req, res) => {
     const submissionId = req.params.id;
 
     const submission = await Submission.deleteOne({submissionId: submissionId})
+
+
+    if (submission) {
+        res.json({status: 200, data: submission});
+    } else {
+        res.json({status: 404, error: 'Target not found'});
+    }
+
+})
+
+router.delete('/targets/:id/submissions', async (req, res) => {
+
+    const targetId = req.params.id;
+
+    const submission = await Submission.deleteMany({targetId: targetId})
 
 
     if (submission) {

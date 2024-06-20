@@ -21,8 +21,7 @@ app.use(express.json());
 
 app.use('/', checkApiKey)
 
-app.use(authRouter)
-
+app.use(authRouter);
 
 app.listen(port, () => {
     console.log('Server is up on port ' + port);

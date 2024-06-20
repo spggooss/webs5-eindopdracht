@@ -11,7 +11,7 @@ const exceptionMessages = {
 
 const createUserSchema = Joi.object({
     email: Joi.string()
-        .min(3).max(20).required()
+        .min(3).max(30).required()
         .messages(exceptionMessages),
     password: Joi.string()
         .min(8).required()

@@ -1,6 +1,7 @@
 // @ts-ignore
-import express from 'express';
+import express, {Response} from 'express';
 import {loginPost, registerPost} from "../services/authService";
+import {RequestCustom} from "./types";
 
 const router = express.Router();
 
@@ -72,13 +73,14 @@ interface User {
  *               type: string
  *               example: "error message"
  */
-
-router.post('/register', (req, res) => {
+//@ts-ignore
+router.post('/register', (req: RequestCustom, res: Response) => {
     const user: User = req.body;
 
     registerPost(user).then(response => {
-        if (response.status === 200) {
-            res.status(response.status).send(response.token);
+        console.log(response);
+        if (response.status === 201) {
+            res.status(response.status).send({token: response.token});
         } else {
             res.status(response.status).send(response.error);
         }        }).catch(e => {
@@ -121,14 +123,18 @@ router.post('/register', (req, res) => {
  *               type: string
  *               example: "error message"
  */
-router.post('/login', (req, res) => {
+//@ts-ignore
+
+router.post('/login', (req: RequestCustom, res: Response) => {
     const user: User = req.body;
+
 
     loginPost(user).then(response => {
         if (response.status === 404) {
             res.status(404).send(response.error);
         } else if (response.status === 200) {
-            res.status(response.status).send(response.token);
+            console.log(response);
+            res.status(response.status).send({token:response.token});
         }
     }).catch(e => {
         console.log(e);

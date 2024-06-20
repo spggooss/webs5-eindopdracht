@@ -34,8 +34,26 @@ breaker.on("fallback", (result: any) => {
 export function getTargets(req: any): Promise<any> {
     return new Promise((resolve, reject) => {
 
+
+        let resource = 'targets';
+        if(req.query.page && req.query.limit && req.query.location) {
+            resource += `?page=${req.query.page}&limit=${req.query.limit}&location=${req.query.location}`;
+        } else if(req.query.page && req.query.limit && !req.query.location) {
+            resource += `?page=${req.query.page}&limit=${req.query.limit}`;
+        } else if(req.query.page && !req.query.limit && req.query.location) {
+            resource += `?page=${req.query.page}&location=${req.query.location}`;
+        } else if(!req.query.page && req.query.limit && req.query.location) {
+            resource += `?limit=${req.query.limit}&location=${req.query.location}`;
+        } else if(req.query.page && !req.query.limit && !req.query.location) {
+            resource += `?page=${req.query.page}`;
+        } else if(!req.query.page && req.query.limit && !req.query.location) {
+            resource += `?limit=${req.query.limit}`;
+        } else if(!req.query.page && !req.query.limit && req.query.location) {
+            resource += `?location=${req.query.location}`;
+        }
+
         breaker
-            .fire("get", targetService, 'targets', req.body, TARGET_SERVICE_API_KEY)
+            .fire("get", targetService, resource, req, false, TARGET_SERVICE_API_KEY)
             .then(resolve)
             .catch(error => {
                 reject(error);
@@ -48,10 +66,10 @@ export function getTargets(req: any): Promise<any> {
 export function addTarget(req: any, form: FormData): Promise<any> {
     return new Promise((resolve, reject) => {
 
-        form.append('userId', req.user.id);
+        form.append('user_id', req.user.id);
 
         breaker
-            .fire("post", targetService, 'targets', form, TARGET_SERVICE_API_KEY)
+            .fire("post", targetService, 'targets', form, true, TARGET_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 
@@ -61,9 +79,9 @@ export function addTarget(req: any, form: FormData): Promise<any> {
 
 export function getTargetById(req: any): Promise<any> {
     return new Promise((resolve, reject) => {
-
+        console.log(req.params.id);
         breaker
-            .fire("get", targetService, 'targets/' + req.params.id, req.body, TARGET_SERVICE_API_KEY)
+            .fire("get", targetService, 'targets/' + req.params.id, req.body, false, TARGET_SERVICE_API_KEY)
             .then(response => {
                     resolve(response)
                 }
@@ -80,7 +98,7 @@ export function getImageByTargetId(req: any): Promise<any> {
     return new Promise((resolve, reject) => {
 
         breaker
-            .fire("get", targetService, 'images/' + req.params.id, req.body, TARGET_SERVICE_API_KEY)
+            .fire("get", targetService, 'images/' + req.params.id, req.body, false, TARGET_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 
@@ -92,7 +110,21 @@ export function deleteTargetById(req: any): Promise<any> {
     return new Promise((resolve, reject) => {
 
         breaker
-            .fire("delete", targetService, 'targets/' + req.params.id, req.body, TARGET_SERVICE_API_KEY)
+            .fire("delete", targetService, 'targets/' + req.params.id, req.body, false, TARGET_SERVICE_API_KEY)
+            .then(resolve)
+            .catch(reject);
+
+
+    })
+}
+
+export function addSubmission(req: any, form: FormData): Promise<any> {
+    return new Promise((resolve, reject) => {
+
+        form.append('user_id', req.user.id);
+
+        breaker
+            .fire("post", targetService, 'submissions', form, true, TARGET_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 

@@ -6,6 +6,8 @@ import {CreateUserValidator} from "../validators/CreateUserValidator";
 import jwt from "jsonwebtoken";
 import amqp, {AmqpConnectionManager, ChannelWrapper} from "amqp-connection-manager";
 import {ConfirmChannel} from "amqplib";
+import userTarget from "../models/userTarget";
+import {onMessage} from "../services/rabbitMQ";
 
 const router = express.Router();
 
@@ -26,11 +28,15 @@ const SECRET_KEY = process.env.SECRET_KEY;
 const messageBacklog: any[] = [];
 
 
-let channel: ChannelWrapper, connection: AmqpConnectionManager;
+let emailChannel: ChannelWrapper, submissionTargetChannel: ChannelWrapper, connection: AmqpConnectionManager;
 
-const exchange = 'contestQueue';
+const emailExchange = 'emailQueue';
+const submissionTargetExchange = 'submissionTargetQueue';
 
-const registrationKey = 'contest.registration';
+
+const registrationKey = 'user.registration';
+export const newTargetKey = 'target.new';
+export const newSubmissionKey = 'submission.new';
 
 async function connectQueue() {
     try {
@@ -45,12 +51,35 @@ async function connectQueue() {
         connection.on('close', () => {
             console.log('Connection closed');
         });
-        channel = connection.createChannel()
+        emailChannel = connection.createChannel({
+            setup: async function (channel: ConfirmChannel) {
+                // `channel` here is a regular amqplib `ConfirmChannel`.
+                // Note that `this` here is the channelWrapper instance.
+                return channel.assertQueue(emailExchange, {durable: true});
+            },
+        })
+
+        submissionTargetChannel = connection.createChannel({
+            setup: async function (channel: ConfirmChannel) {
+                // `channel` here is a regular amqplib `ConfirmChannel`.
+                // Note that `this` here is the channelWrapper instance.
+                return channel.assertQueue(submissionTargetExchange, {durable: true});
+            },
+        })
+
+        await submissionTargetChannel.addSetup(function (channel: ConfirmChannel) {
+            channel.bindQueue(submissionTargetExchange, submissionTargetExchange, newTargetKey);
+            channel.bindQueue(submissionTargetExchange, submissionTargetExchange, newSubmissionKey);
+        });
+
+        await submissionTargetChannel.consume(submissionTargetExchange, onMessage, {
+            noAck: true
+        });
 
         connection.on('connect', async () => {
-            console.log('Publishing backlog to queue');
             while (messageBacklog.length > 0) {
-                await channel.publish(exchange, registrationKey, Buffer.from(JSON.stringify(messageBacklog[0])));
+                console.log('Publishing backlog to queue');
+                await emailChannel.publish(emailExchange, registrationKey, Buffer.from(JSON.stringify(messageBacklog[0])));
                 messageBacklog.shift();
             }
         });
@@ -113,7 +142,7 @@ router.post('/register', CreateUserValidator, async (req, res) => {
     if (!connection.isConnected()) {
         messageBacklog.push(user);
     } else {
-        await channel.publish(exchange, registrationKey, Buffer.from(JSON.stringify(user)));
+        await emailChannel.publish(emailExchange, registrationKey, Buffer.from(JSON.stringify(user)));
     }
 
     return res.json({status: 201, token: token});
@@ -124,5 +153,18 @@ router.post('/register', CreateUserValidator, async (req, res) => {
 //de login doet praktisch hetzelfde als de 'register' route met dat verschil dat het alleen maar
 // een nieuwe JWT geeft wanneer de user al bestaat
 router.post('/login', generateJWT);
+
+
+router.get('/user-targets/:id', async (req, res) => {
+    const userId = req.params.id;
+
+    const userTargets = await userTarget.find({userId: userId});
+
+    if (userTargets) {
+        return res.json({status: 200, data: userTargets});
+    } else {
+        return res.json({status: 404, error: 'No targets found'});
+    }
+});
 
 export {router as authRouter};

@@ -19,17 +19,14 @@ const exceptionMessages = {
 
 };
 
-const createTargetSchema = Joi.object({
-    location: Joi.string().required()
-        .messages(exceptionMessages),
-    date: Joi.date().format('YYYY-MM-DD HH:mm:ss').required().greater('now')
+const createSubmissionSchema = Joi.object({
+    target_id: Joi.string().required()
         .messages(exceptionMessages),
     user_id: Joi.string().required()
 });
 
-function CreateTargetValidator(req: Request, res: Response, next: NextFunction) {
-    console.log(req);
-    const {error} = createTargetSchema.validate(req.body);
+function CreateSubmissionValidator(req: Request, res: Response, next: NextFunction) {
+    const {error} = createSubmissionSchema.validate(req.body);
     if (error) {
         const {details} = error;
         // @ts-ignore
@@ -40,4 +37,4 @@ function CreateTargetValidator(req: Request, res: Response, next: NextFunction) 
     return next();
 }
 
-export {CreateTargetValidator};
+export {CreateSubmissionValidator};

@@ -1,6 +1,7 @@
 import * as dotenv from 'dotenv';
 import CircuitBreaker from 'opossum';
 import {callService} from "../api_helper";
+import {User} from "../router/types";
 
 dotenv.config();
 
@@ -32,7 +33,7 @@ export function registerPost(body: any): Promise<any> {
          ervoor dat je request verloopt via je circuitbreaker
         */
         breaker
-            .fire("post", authService, 'register', body, AUTH_SERVICE_API_KEY)
+            .fire("post", authService, 'register', body, false, AUTH_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
 
@@ -40,7 +41,24 @@ export function registerPost(body: any): Promise<any> {
     })
 }
 
-export function loginPost(body: any): Promise<any> {
+export function loginPost(body: User | any): Promise<any> {
+    return new Promise((resolve, reject) => {
+        //+++circuit breaker patroon +++++++++++++++++++++++++++++++++++++++++++
+        /*
+         implementeer hier de circuitBreaker fire method. Daarmee zorg je
+         ervoor dat je request verloopt via je circuitbreaker
+        */
+
+        breaker
+            .fire("post", authService, 'login', body,false, AUTH_SERVICE_API_KEY)
+            .then(resolve)
+            .catch(reject);
+
+
+    })
+}
+
+export function getUserTargets(userId: string, body: any): Promise<any> {
     return new Promise((resolve, reject) => {
         //+++circuit breaker patroon +++++++++++++++++++++++++++++++++++++++++++
         /*
@@ -48,13 +66,26 @@ export function loginPost(body: any): Promise<any> {
          ervoor dat je request verloopt via je circuitbreaker
         */
         breaker
-            .fire("post", authService, 'login', body, AUTH_SERVICE_API_KEY)
+            .fire("get", authService, 'user-targets/' + userId, body, false, AUTH_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
-
-
-    })
+    });
 }
+
+export function getUserSubmissions(userId: string, body: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+        //+++circuit breaker patroon +++++++++++++++++++++++++++++++++++++++++++
+        /*
+         implementeer hier de circuitBreaker fire method. Daarmee zorg je
+         ervoor dat je request verloopt via je circuitbreaker
+        */
+        breaker
+            .fire("post", authService, 'user-submissions/' + userId, body, false, AUTH_SERVICE_API_KEY)
+            .then(resolve)
+            .catch(reject);
+    });
+}
+
 
 
 //gebruik de .fallback(()=>{}) functie om bijv. een bericht naar de gebruiker te sturen.

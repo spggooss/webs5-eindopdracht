@@ -1,9 +1,11 @@
-import express from 'express';
-import passport from "passport";
+import express, {Response} from 'express';
 import multer from "multer";
 import { addTarget, deleteTargetById, getImageByTargetId, getTargetById, getTargets } from "../services/targetService";
 import { isLoggedIn } from "../middleware/authMiddleware";
+import {RequestCustom} from "./types";
 
+
+const api_url = process.env.API_URL || 'http://localhost:3000';
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
@@ -43,36 +45,7 @@ const router = express.Router();
  *   description: Target management API
  */
 
-/**
- * @swagger
- * /targets:
- *   get:
- *     summary: Get all targets
- *     tags: [Target]
- *     responses:
- *       200:
- *         description: List of targets
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Target'
- *       400:
- *         description: Bad request
- */
-router.get('/targets', isLoggedIn, (req, res) => {
-    console.log(req.user);
-
-    getTargets(req)
-        .then(targets => {
-            res.send(targets);
-        })
-        .catch(e => {
-            res.status(400).send(e);
-        });
-});
-
+// @ts-ignore
 /**
  * @swagger
  * /targets/{id}:
@@ -98,12 +71,17 @@ router.get('/targets', isLoggedIn, (req, res) => {
  *       404:
  *         description: Target not found
  */
-router.get('/targets/:id', isLoggedIn, (req, res) => {
+// @ts-ignore
+router.get('/targets/:id', isLoggedIn, (req: RequestCustom, res: Response) => {
+    console.log(req);
+
     getTargetById(req)
         .then(response => {
             if (response.status === 200) {
-                const target = JSON.parse(response.data);
-                res.send(target);
+                console.log(response.data);
+                const targetResponse = response.data;
+                targetResponse.imageUrl = `${api_url}/images/${req.params.id}`;
+                res.send(response.data);
             } else {
                 const error = response.error;
                 res.status(response.status).send({ error });
@@ -111,6 +89,47 @@ router.get('/targets/:id', isLoggedIn, (req, res) => {
         })
         .catch(e => {
             console.log(e);
+            res.status(400).send(e);
+        });
+});
+
+
+/**
+ * @swagger
+ * /targets:
+ *   get:
+ *     summary: Get all targets
+ *     tags: [Target]
+ *     responses:
+ *       200:
+ *         description: List of targets
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Target'
+ *       400:
+ *         description: Bad request
+ */
+//@ts-ignore
+router.get('/targets', isLoggedIn, (req: RequestCustom, res: Response) => {
+
+    getTargets(req)
+        .then(response => {
+            const targets = response.data;
+            const targetsWithImage = targets.map((target: { _id: any; location: any; date: any; image: any; targetId: any }) => {
+                return {
+                    _id: target._id,
+                    location: target.location,
+                    date: target.date,
+                    targetId: target.targetId,
+                    imageUrl: `${api_url}/images/${target.targetId}`
+                }
+            });
+            res.send(targetsWithImage);
+        })
+        .catch(e => {
             res.status(400).send(e);
         });
 });
@@ -142,7 +161,8 @@ router.get('/targets/:id', isLoggedIn, (req, res) => {
  *       400:
  *         description: Bad request
  */
-router.post('/targets', upload.single('image'), isLoggedIn, (req, res) => {
+//@ts-ignore
+router.post('/targets', upload.single('image'), isLoggedIn, (req: RequestCustom, res: Response) => {
     const file = req.file;
 
     if (!file) {
@@ -158,8 +178,9 @@ router.post('/targets', upload.single('image'), isLoggedIn, (req, res) => {
 
     addTarget(req, form)
         .then(response => {
-            if (response.status === 404) {
-                const target = JSON.parse(response.data);
+            if (response.status === 200) {
+                const target = response.data
+                target.imageUrl = `${api_url}/images/${target.targetId}`;
                 res.send(target);
             } else {
                 res.status(response.status).send(response.data);
@@ -192,7 +213,8 @@ router.post('/targets', upload.single('image'), isLoggedIn, (req, res) => {
  *       404:
  *         description: Target not found
  */
-router.delete('/targets/:id', isLoggedIn, (req, res) => {
+//@ts-ignore
+router.delete('/targets/:id', isLoggedIn, (req: RequestCustom, res: Response) => {
     deleteTargetById(req)
         .then(response => {
             if (response.status === 200) {
@@ -234,14 +256,15 @@ router.delete('/targets/:id', isLoggedIn, (req, res) => {
  *       404:
  *         description: Image not found
  */
-router.get('/images/:id', isLoggedIn, (req, res) => {
+//@ts-ignore
+router.get('/images/:id', isLoggedIn, (req: RequestCustom, res: Response) => {
     getImageByTargetId(req)
         .then(response => {
             if (response.status === 404) {
                 const target = JSON.parse(response.data);
                 res.send(target);
             } else {
-                const img = Buffer.from(response.image, 'base64');
+                const img = Buffer.from(response.data, 'base64');
                 res.writeHead(200, {
                     'Content-Type': 'image/png',
                     'Content-Length': img.length,
