@@ -36,21 +36,16 @@ export function getTargets(req: any): Promise<any> {
 
 
         let resource = 'targets';
-        if(req.query.page && req.query.limit && req.query.location) {
-            resource += `?page=${req.query.page}&limit=${req.query.limit}&location=${req.query.location}`;
-        } else if(req.query.page && req.query.limit && !req.query.location) {
-            resource += `?page=${req.query.page}&limit=${req.query.limit}`;
-        } else if(req.query.page && !req.query.limit && req.query.location) {
-            resource += `?page=${req.query.page}&location=${req.query.location}`;
-        } else if(!req.query.page && req.query.limit && req.query.location) {
-            resource += `?limit=${req.query.limit}&location=${req.query.location}`;
-        } else if(req.query.page && !req.query.limit && !req.query.location) {
-            resource += `?page=${req.query.page}`;
-        } else if(!req.query.page && req.query.limit && !req.query.location) {
-            resource += `?limit=${req.query.limit}`;
-        } else if(!req.query.page && !req.query.limit && req.query.location) {
-            resource += `?location=${req.query.location}`;
+        const queryParams = [];
+
+        if (req.query.page) queryParams.push(`page=${req.query.page}`);
+        if (req.query.limit) queryParams.push(`limit=${req.query.limit}`);
+        if (req.query.location) queryParams.push(`location=${req.query.location}`);
+
+        if (queryParams.length > 0) {
+            resource += '?' + queryParams.join('&');
         }
+
 
         breaker
             .fire("get", targetService, resource, req, false, TARGET_SERVICE_API_KEY)
