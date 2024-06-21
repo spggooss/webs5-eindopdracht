@@ -1,6 +1,12 @@
 import express, {NextFunction, Response} from 'express';
 import multer from "multer";
-import {addSubmission, deleteSubmissionById, getTargetById, getTargets} from "../services/targetService";
+import {
+    addSubmission,
+    deleteSubmissionById,
+    getSubmissionsByTargetId,
+    getTargetById,
+    getTargets
+} from "../services/targetService";
 import {hasSubmissionOwnership, hasTargetOwnership, isLoggedIn} from "../middleware/authMiddleware";
 import {RequestCustom} from "./types";
 
@@ -71,9 +77,10 @@ const router = express.Router();
  */
 //@ts-ignore
 router.get('/targets/:id/submissions', isLoggedIn, hasTargetOwnership, (req: Request, res: Response, next: NextFunction) => {
-    getTargets(req)
-        .then(targets => {
-            res.json(targets);
+    getSubmissionsByTargetId(req)
+        .then(response => {
+            const submissions = response.data;
+            res.json({submissions});
         })
         .catch(e => {
             res.status(400).send(e);

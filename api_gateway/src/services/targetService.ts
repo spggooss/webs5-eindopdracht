@@ -74,9 +74,24 @@ export function addTarget(req: any, form: FormData): Promise<any> {
 
 export function getTargetById(req: any): Promise<any> {
     return new Promise((resolve, reject) => {
-        console.log(req.params.id);
         breaker
             .fire("get", targetService, 'targets/' + req.params.id, req.body, false, TARGET_SERVICE_API_KEY)
+            .then(response => {
+                    resolve(response)
+                }
+            )
+            .catch(error => {
+                reject(error);
+            });
+
+
+    })
+}
+
+export function getSubmissionsByTargetId(req: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+        breaker
+            .fire("get", targetService, 'targets/' + req.params.id + '/submissions', req.body, false, TARGET_SERVICE_API_KEY)
             .then(response => {
                     resolve(response)
                 }

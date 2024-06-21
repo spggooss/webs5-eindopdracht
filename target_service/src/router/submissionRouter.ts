@@ -203,8 +203,18 @@ router.get('/targets/:id/submissions', async (req, res) => {
         const targetId = req.params.id;
         const submissions = await Submission.find({targetId: targetId})
 
+        const submissionResponse = submissions.map((submission) => {
+            return {
+                _id: submission._id,
+                targetId: submission.targetId,
+                userId: submission.userId,
+                submissionId: submission.submissionId,
+                score: submission.score
+            }
+        });
+
         if (submissions) {
-            res.json({status: 200, data: submissions});
+            res.json({status: 200, data: submissionResponse});
         } else {
             res.json({status: 404, error: 'Target not found'});
         }
