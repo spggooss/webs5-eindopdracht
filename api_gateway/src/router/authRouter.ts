@@ -8,7 +8,8 @@ const router = express.Router();
 interface User {
     email: string,
     password: string,
-    role: string
+    role: string,
+    name: string
 }
 
 
@@ -78,12 +79,12 @@ router.post('/register', (req: RequestCustom, res: Response) => {
     const user: User = req.body;
 
     registerPost(user).then(response => {
-        console.log(response);
         if (response.status === 201) {
             res.status(response.status).send({token: response.token});
         } else {
             res.status(response.status).send(response.error);
-        }        }).catch(e => {
+        }
+    }).catch(e => {
             console.log(e);
             if (e.response.data) {
                 res.status(400).json(e.response.data);

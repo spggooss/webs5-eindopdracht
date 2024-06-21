@@ -28,7 +28,6 @@ const createTargetSchema = Joi.object({
 });
 
 function CreateTargetValidator(req: Request, res: Response, next: NextFunction) {
-    console.log(req);
     const {error} = createTargetSchema.validate(req.body);
     if (error) {
         const {details} = error;

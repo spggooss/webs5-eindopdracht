@@ -1,7 +1,7 @@
 import express, {Response} from 'express';
 import multer from "multer";
 import { addTarget, deleteTargetById, getImageByTargetId, getTargetById, getTargets } from "../services/targetService";
-import { isLoggedIn } from "../middleware/authMiddleware";
+import {hasTargetOwnership, isLoggedIn} from "../middleware/authMiddleware";
 import {RequestCustom} from "./types";
 
 
@@ -214,12 +214,12 @@ router.post('/targets', upload.single('image'), isLoggedIn, (req: RequestCustom,
  *         description: Target not found
  */
 //@ts-ignore
-router.delete('/targets/:id', isLoggedIn, (req: RequestCustom, res: Response) => {
+router.delete('/targets/:id', isLoggedIn, hasTargetOwnership, (req: RequestCustom, res: Response) => {
     deleteTargetById(req)
         .then(response => {
             if (response.status === 200) {
-                const target = JSON.parse(response.data);
-                res.send(target);
+                const message = response.data.message;
+                res.send({message});
             } else {
                 res.status(response.status).send(response.error);
             }

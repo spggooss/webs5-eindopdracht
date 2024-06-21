@@ -8,6 +8,7 @@ const userSchema = new Mongoose.Schema<UserDocument>({
     password: {type: String, unique: true, required: true},
     targets: [{type: Number, ref: 'UserTarget'}],
     role : { type: String, required: true},
+    name : {type: String, required: true}
 }, {
     methods: {
         async isValidPassword(password: string | Buffer) {

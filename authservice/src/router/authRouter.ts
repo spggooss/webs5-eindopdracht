@@ -8,6 +8,7 @@ import amqp, {AmqpConnectionManager, ChannelWrapper} from "amqp-connection-manag
 import {ConfirmChannel} from "amqplib";
 import userTarget from "../models/userTarget";
 import {onMessage} from "../services/rabbitMQ";
+import userSubmission from "../models/userSubmission";
 
 const router = express.Router();
 
@@ -92,7 +93,8 @@ async function connectQueue() {
 interface User {
     email: string,
     password: string,
-    role: string
+    role: string,
+    name: string,
 }
 
 connectQueue().then(r => console.log('connected to queue')).catch(e => console.log(e));
@@ -111,13 +113,14 @@ router.get('/register', (req, res) => {
 router.post('/register', CreateUserValidator, async (req, res) => {
     const userRegisterData = req.body;
 
-    if (!userRegisterData.email || !userRegisterData.password || !userRegisterData.role) {
+    if (!userRegisterData.email || !userRegisterData.password || !userRegisterData.role || !userRegisterData.name) {
         return res.json({status: 400, error: 'Fill required fields'});
     }
     const user: User = {
         email: userRegisterData.email,
         password: userRegisterData.password,
         role: userRegisterData.role,
+        name: userRegisterData.name
     }
 
 
@@ -162,6 +165,18 @@ router.get('/user-targets/:id', async (req, res) => {
 
     if (userTargets) {
         return res.json({status: 200, data: userTargets});
+    } else {
+        return res.json({status: 404, error: 'No targets found'});
+    }
+});
+
+router.get('/user-submissions/:id', async (req, res) => {
+    const userId = req.params.id;
+
+    const userSubmissions = await userSubmission.find({userId: userId});
+
+    if (userSubmissions) {
+        return res.json({status: 200, data: userSubmissions});
     } else {
         return res.json({status: 404, error: 'No targets found'});
     }

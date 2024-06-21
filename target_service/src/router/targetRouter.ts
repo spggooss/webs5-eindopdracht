@@ -9,7 +9,8 @@ import {CreateTargetValidator} from "../validators/CreateTargetValidator";
 
 import multer from "multer";
 import mongoose from "mongoose";
-import {ConfirmChannel} from "amqplib";
+import {ConfirmChannel, ConsumeMessage} from "amqplib";
+import Submission from "../models/Submission";
 
 const storage = multer.memoryStorage();
 const upload = multer({storage: storage});
@@ -35,13 +36,15 @@ const submissionTargetMessageBacklog: any[] = [];
 
 
 
-let submissionTargetChannel: ChannelWrapper, timerChannel: ChannelWrapper, connection: AmqpConnectionManager;
+let submissionTargetChannel: ChannelWrapper, timerChannel: ChannelWrapper, contestEndedChannel: ChannelWrapper, connection: AmqpConnectionManager;
 
 const submissionTargetExchange = 'submissionTargetQueue';
 const timerExchange = 'timerQueue';
 
 const newTargetKey = 'target.new';
-const userCreatedTargetKey = 'target.user.created';
+
+const contestEndedExchange = 'contestEndedQueue';
+export const contestEndedKey = 'contest.end';
 
 async function connectQueue() {
     try {
@@ -63,6 +66,13 @@ async function connectQueue() {
                 return channel.assertQueue(timerExchange, {durable: true});
             },
         })
+        contestEndedChannel = connection.createChannel({
+            setup: async function (channel: ConfirmChannel) {
+                // `channel` here is a regular amqplib `ConfirmChannel`.
+                // Note that `this` here is the channelWrapper instance.
+                return channel.assertQueue(contestEndedExchange, {durable: true});
+            },
+        })
         submissionTargetChannel = connection.createChannel({
             setup: async function (channel: ConfirmChannel) {
                 // `channel` here is a regular amqplib `ConfirmChannel`.
@@ -71,10 +81,18 @@ async function connectQueue() {
             },
         })
 
+        await contestEndedChannel.addSetup(function (channel: ConfirmChannel) {
+            channel.bindQueue(timerExchange, timerExchange, contestEndedKey);
+        });
+
+        await contestEndedChannel.consume(timerExchange, onMessage, {
+            noAck: true
+        });
+
         connection.on('connect', async () => {
             console.log('Publishing backlog to queue');
             while (submissionTargetMessageBacklog.length > 0) {
-                await submissionTargetChannel.publish(submissionTargetExchange, userCreatedTargetKey, Buffer.from(JSON.stringify(submissionTargetMessageBacklog[0])));
+                await submissionTargetChannel.publish(submissionTargetExchange, newTargetKey, Buffer.from(JSON.stringify(submissionTargetMessageBacklog[0])));
                 submissionTargetMessageBacklog.shift();
             }
             while (timerMessageBacklog.length > 0) {
@@ -163,7 +181,7 @@ try {
     } else {
 
         await timerChannel.publish(timerExchange, newTargetKey, Buffer.from(JSON.stringify(targetModelData)));
-        await submissionTargetChannel.publish(submissionTargetExchange, userCreatedTargetKey, Buffer.from(JSON.stringify(targetModelData)));
+        await submissionTargetChannel.publish(submissionTargetExchange, newTargetKey, Buffer.from(JSON.stringify(targetModelData)));
     }
 
 
@@ -222,8 +240,6 @@ router.get('/images/:id', async function(req, res) {
 router.get('/targets/:id', async (req, res) => {
 
     const targetId = req.params.id;
-    console.log(req)
-    console.log(targetId)
 
     const target = await Target.findOne({targetId: targetId})
 
@@ -239,6 +255,26 @@ router.get('/targets/:id', async (req, res) => {
     } else {
         res.json({status: 404, error: 'Target not found'});
     }
+
+})
+
+router.delete('/targets/:id', async (req, res) => {
+
+    const targetId = req.params.id;
+    console.log(targetId);
+try {
+    const deleteResult = await Target.deleteOne({targetId: targetId})
+
+
+    if (deleteResult.deletedCount === 1) {
+        res.json({status: 200, data: {message: 'Target deleted'}});
+    } else {
+        res.json({status: 404, error: 'Target not found'});
+    }
+} catch (e) {
+    console.log(e);
+    res.json({status: 404, error: 'Target not found'});
+}
 
 })
 
@@ -297,5 +333,27 @@ router.get('/targets', async (req, res) => {
     }
 
 })
+
+interface ContestEndedMessage {
+    targetId: number;
+}
+
+export const onMessage = async (msg: ConsumeMessage) => {
+    console.log('Received message');
+    if (msg === null) {
+        return;
+    }
+    console.log(`Received message: ${msg.content.toString()}`);
+    const queueMessage: ContestEndedMessage = JSON.parse(msg.content.toString());
+    switch (msg.fields.routingKey) {
+        case contestEndedKey:
+            const submissions = await Submission.find({targetId: queueMessage.targetId});
+
+
+
+            break;
+    }
+
+}
 
 export {router as targetRouter};

@@ -22,7 +22,6 @@ export function callService(method: string, serviceAddress: any, resource: any, 
                 });
 
             } else if (method === 'get') {
-                console.log(`${serviceAddress}/${resource}`);
                 axios.get(`${serviceAddress}/${resource}`, {headers})
                     .then((mess) => {
                         resolve(mess.data);

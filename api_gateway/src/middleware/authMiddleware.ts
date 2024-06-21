@@ -40,13 +40,14 @@ export const hasRole = (role: string) => (req: RequestCustom, res: Response, nex
 
 export const hasTargetOwnership = async (req: RequestCustom, res: Response, next: NextFunction) => {
     if (req.user && req.user.role === 'admin') {
-        const userTargets = await getUserTargets(req.user.id, req.body);
+        const response = await getUserTargets(req.user.id, req.body);
 
-        console.log(userTargets)
+        const userTargets = response.data;
 
         if(req.params.id) {
-            const targetId = req.params.id;
-            if (userTargets.some((target: { targetId: string; }) => target.targetId === targetId)) {
+            const targetId = parseInt(req.params.id);
+
+            if (userTargets.length > 0 && userTargets.some((target: { targetId: number; }) => target.targetId === targetId)) {
                 return next();
             } else{
                 return res.status(403).json({message: 'Forbidden'});
