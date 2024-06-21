@@ -82,7 +82,11 @@ router.post('/register', (req: RequestCustom, res: Response) => {
         if (response.status === 201) {
             res.status(response.status).send({token: response.token});
         } else {
-            res.status(response.status).send(response.error);
+            if (response.error) {
+                res.status(response.status).send(response.error);
+            } else {
+                res.status(response.status).send(response.details);
+            }
         }
     }).catch(e => {
             console.log(e);

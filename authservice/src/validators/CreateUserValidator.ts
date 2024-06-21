@@ -17,6 +17,7 @@ const createUserSchema = Joi.object({
         .min(8).required()
         .messages(exceptionMessages),
     role: Joi.string().required().messages(exceptionMessages),
+    name: Joi.string().required().messages(exceptionMessages),
 });
 
 function CreateUserValidator(req: Request, res: Response, next: NextFunction) {
