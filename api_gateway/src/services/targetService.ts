@@ -132,6 +132,18 @@ export function addSubmission(req: any, form: FormData): Promise<any> {
     })
 }
 
+export function deleteSubmissionById(req: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+
+        breaker
+            .fire("delete", targetService, 'submissions/' + req.params.id, req.body, false, TARGET_SERVICE_API_KEY)
+            .then(resolve)
+            .catch(reject);
+
+
+    })
+}
+
 
 
 

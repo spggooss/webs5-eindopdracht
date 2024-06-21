@@ -230,16 +230,19 @@ router.get('/submissions/:id', async (req, res) => {
 router.delete('/submissions/:id', async (req, res) => {
 
     const submissionId = req.params.id;
+    try {
+        const deleteResult = await Submission.deleteOne({submissionId: submissionId})
 
-    const submission = await Submission.deleteOne({submissionId: submissionId})
 
-
-    if (submission) {
-        res.json({status: 200, data: submission});
-    } else {
-        res.json({status: 404, error: 'Target not found'});
+        if (deleteResult.deletedCount === 1) {
+            res.json({status: 200, data: {message: 'Submission deleted'}});
+        } else {
+            res.json({status: 404, error: 'Submission not found'});
+        }
+    } catch (e) {
+        console.log(e);
+        res.json({status: 404, error: 'Submission not found'});
     }
-
 })
 
 router.delete('/targets/:id/submissions', async (req, res) => {

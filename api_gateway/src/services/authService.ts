@@ -80,7 +80,7 @@ export function getUserSubmissions(userId: string, body: any): Promise<any> {
          ervoor dat je request verloopt via je circuitbreaker
         */
         breaker
-            .fire("post", authService, 'user-submissions/' + userId, body, false, AUTH_SERVICE_API_KEY)
+            .fire("get", authService, 'user-submissions/' + userId, body, false, AUTH_SERVICE_API_KEY)
             .then(resolve)
             .catch(reject);
     });

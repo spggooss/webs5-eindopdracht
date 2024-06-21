@@ -62,13 +62,13 @@ export const hasTargetOwnership = async (req: RequestCustom, res: Response, next
 
 export const hasSubmissionOwnership = async (req: RequestCustom, res: Response, next: NextFunction) => {
     if (req.user) {
-        const userTargets = await getUserSubmissions(req.user.id, req.body);
+        const response = await getUserSubmissions(req.user.id, req.body);
 
-        console.log(userTargets)
+        const userSubmissions = response.data;
 
         if(req.params.id) {
-            const targetId = req.params.id;
-            if (userTargets.some((target: { targetId: string; }) => target.targetId === targetId)) {
+            const submissionId = parseInt(req.params.id);
+            if (userSubmissions.length > 0 && userSubmissions.some((submission: { submissionId: number; }) => submission.submissionId === submissionId)) {
                 return next();
             } else{
                 return res.status(403).json({message: 'Forbidden'});

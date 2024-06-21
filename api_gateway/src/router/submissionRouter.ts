@@ -1,6 +1,6 @@
 import express, {NextFunction, Response} from 'express';
 import multer from "multer";
-import {addSubmission, getTargetById, getTargets} from "../services/targetService";
+import {addSubmission, deleteSubmissionById, getTargetById, getTargets} from "../services/targetService";
 import {hasSubmissionOwnership, hasTargetOwnership, isLoggedIn} from "../middleware/authMiddleware";
 import {RequestCustom} from "./types";
 
@@ -165,11 +165,11 @@ router.delete('/submissions/:id',
     isLoggedIn,
     hasSubmissionOwnership,
     (req: Request, res: Response) => {
-        getTargetById(req)
+        deleteSubmissionById(req)
             .then(response => {
-                if (response.status === 404) {
-                    const target = JSON.parse(response.data);
-                    res.send(target);
+                if (response.status === 200) {
+                    const message = response.data.message;
+                    res.send({message});
                 } else {
                     res.status(response.status).send(response.error);
                 }
